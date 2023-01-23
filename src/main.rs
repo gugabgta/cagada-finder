@@ -1,12 +1,13 @@
-use std::process::Command;
+#[allow(unused_results)]
+#[warn(unused_imports)]
+#[warn(unused_variables)]
+#[warn(dead_code)]
+
+mod git;
+mod cli;
 
 fn main() {
-    let output = Command::new("git")
-                    .arg("diff")
-                    .arg("--staged")
-                    .output()
-                    .expect("failed to execute process");
-
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    println!("{}", stdout);
+    // let args = Cli::parse();
+    // println!("{}", String::from(args.pattern));
+    git::Diff::get();
 }
