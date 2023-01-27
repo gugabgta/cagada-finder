@@ -1,4 +1,4 @@
-use clap::{Parser, arg, /* Command */};
+use clap::{Parser, arg};
 
 #[derive(Parser)]
 pub struct Cli {
@@ -19,3 +19,4 @@ let re = Regex::new(&args.pattern).unwrap();
         }
     }
 */
+//

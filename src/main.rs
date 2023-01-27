@@ -7,7 +7,5 @@ mod git;
 mod cli;
 
 fn main() {
-    // let args = Cli::parse();
-    // println!("{}", String::from(args.pattern));
     git::Diff::get();
 }
