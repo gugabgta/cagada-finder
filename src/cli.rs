@@ -19,4 +19,3 @@ let re = Regex::new(&args.pattern).unwrap();
         }
     }
 */
-//
