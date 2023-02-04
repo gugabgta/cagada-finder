@@ -1,3 +1,5 @@
+use std::process::Command;
+
 use clap::{Parser, arg};
 
 #[derive(Parser)]
@@ -8,6 +10,19 @@ pub struct Cli {
 
     #[arg(long)]
     pub staged: bool,
+}
+
+impl Cli {
+    pub fn gitDiffCommand()-> Command {
+        let args: Cli = Cli::parse();
+        let mut command: Command = Command::new("git");
+        command.arg("diff");
+        if args.staged {
+            command.arg("--staged");
+        }
+
+        command
+    }
 }
 
 /*

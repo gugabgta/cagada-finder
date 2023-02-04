@@ -1,3 +1,7 @@
+use std::process::Command;
+
+use crate::cli::Cli;
+
 #[allow(unused_results)]
 #[warn(unused_imports)]
 #[warn(unused_variables)]
@@ -7,6 +11,6 @@ mod git;
 mod cli;
 
 fn main() {
-    git::Diff::get();
+    let command: Command = Cli::gitDiffCommand();
+    git::Diff::get(command);
 }
-//

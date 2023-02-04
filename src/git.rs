@@ -1,5 +1,14 @@
 use regex::{Regex, RegexBuilder, RegexSet};
-use std::{process::{Command, Output}, io::{BufReader, BufRead}, fs::File};
+use std::{
+    process::{
+        Command, Output
+    }, 
+    io::{
+        BufReader, 
+        BufRead
+    }, 
+    fs::File
+};
 use clap::Parser;
 use crate::cli::Cli;
 
@@ -21,21 +30,17 @@ pub struct Diff {
 }
 
 impl Diff {
-    pub fn get () /* -> Self */ {
-        let args: Cli = Cli::parse();
-        let mut command: Command = Command::new("git");
+    pub fn get (command: Command) /* -> Self */ {
+        // let _output: Output = command.output().expect("failed to execute process");
 
-        command.arg("diff");
-        if args.staged {
-            command.arg("--staged");
-        }
-
-        let _output: Output = command.output().expect("failed to execute process");
-
-        let files = DiffFile::get().unwrap();
+        let files = DiffFile::get(command).unwrap();
         for file in files {
             Cagada::full(file);
         }
+
+        // for file in files {
+        //     Cagada::full(file);
+        // }
         // let stdout = String::from_utf8(output.stdout).unwrap();
         // Diff {}
     }
@@ -56,12 +61,15 @@ enum DiffFileStatus {
 }
 
 impl DiffFile {
-    fn get() -> Option<Vec<DiffFile>> {
+    fn get(mut command: Command) -> Option<Vec<DiffFile>> {
         let re: Regex = RegexBuilder::new(r"^.*([MDA])\W*(.*)$")
             .multi_line(true)
             .build()
             .unwrap();
-        let text: String =  DiffFile::raw_data();
+            
+        command.arg("--raw");
+        let output: Output = command.output().unwrap();
+        let text: String = String::from_utf8(output.stdout).unwrap_or("".to_owned());
 
         let mut res: Vec<DiffFile> = vec![];
 
@@ -81,18 +89,6 @@ impl DiffFile {
             })
         }
         Some(res)
-    }
-
-    fn raw_data() -> String {
-        let args: Cli = Cli::parse();
-        let mut command: Command = Command::new("git");
-        command.arg("diff");
-        command.arg("--raw");
-        if args.staged {
-            command.arg("--staged");
-        }
-        let output: Output = command.output().unwrap();
-        String::from_utf8(output.stdout).unwrap_or("".to_owned())
     }
 }
 
@@ -122,19 +118,21 @@ impl Cagada {
         }
     }
 
-    fn git(dfile: DiffFile) {
-        let args: Cli = Cli::parse();
-        let mut command: Command = Command::new("git");
-        command.arg("diff");
-        if args.staged {
-            command.arg("--staged");
-        }
-        command.arg(dfile.name);
-        
-        // let output: Output = command.output().unwrap();
-        // let reader = BufReader::new(output);
-        // let re: RegexSet = Cagada::default_regex();
-        // println!("{:?}", output);
+    fn git(mut command: Command) {
+        let mut parser = GitParser { command };
+        parser.ParseCommand();
+    }
+}
+
+struct GitParser {
+    command: Command
+}
+
+impl GitParser {
+    fn ParseCommand(&mut self) {
+        let output: Output = self.command.output().unwrap();
+        let lines = String::from_utf8(output.stdout).unwrap_or("".to_owned());
+        println!("{}", lines);
     }
 }
 
