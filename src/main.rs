@@ -1,16 +1,17 @@
-use std::process::Command;
+use clap::Parser;
 
 use crate::cli::Cli;
-
-#[allow(unused_results)]
-#[warn(unused_imports)]
-#[warn(unused_variables)]
-#[warn(dead_code)]
 
 mod git;
 mod cli;
 
 fn main() {
-    let command: Command = Cli::gitDiffCommand();
-    git::Diff::get(command);
+    // let command: Command = Cli::gitDiffCommand();
+    let args: Cli = Cli::parse();
+    let full = args.full;
+    
+    // let diff = match full {
+        // true => git::Diff::full(),
+        // false => git::Diff::new(),
+    // };
 }

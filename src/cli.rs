@@ -10,6 +10,9 @@ pub struct Cli {
 
     #[arg(long)]
     pub staged: bool,
+    
+    #[arg(short = 'f', long = "full")]
+    pub full: bool,
 }
 
 impl Cli {
@@ -24,7 +27,7 @@ impl Cli {
         command
     }
 }
-
+ 
 /*
 let re = Regex::new(&args.pattern).unwrap();
     for line in stdin.lock().lines() {
