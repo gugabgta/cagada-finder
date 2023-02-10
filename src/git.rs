@@ -3,24 +3,17 @@ use std::{
     process::{
         Command, Output
     },
-    io::{
-        BufReader,
-        BufRead
-    },
-    fs::File
+    fs,
+    vec
 };
-use crate::cli::Cli;
 
 const DEFAULT_REGEX: &'static [&str] = &[
     r"^\s*//",
     r"^\s*/\*",
-    r"^\s*\*\\",
-];
-
-const DEFAULT_GIT_REGEX: &'static [&str] = &[
-    r"^\+[^\+]*//",
-    r"^\+[^\+]* \s*/\*",
-    r"^\+[^\+]* \s*\*\\",
+    r"^\s*\*/",
+    r"^\s*error_log",
+    r"^\s*console.log",
+    r"^\s*cagada",
 ];
 
 const GIT_LINE_NUMBER_REGEX: &str = r"@@ -\d+,\d+ \+(\d+)";
@@ -29,84 +22,111 @@ const GIT_REMOVED_LINE_REGEX: &str = r"^\-[^\-]*?";
 
 #[derive(Debug)]
 pub struct Diff {
-    pub files: Option<Vec<DiffFile>>,
+    pub file: DiffFile,
     pub cagadas: Option<Vec<Cagada>>,
     pub cagada_count: usize,
 }
 
 #[derive(Debug)]
 pub struct DiffFile {
-    name: String,
-    extension: String,
-    status: DiffFileStatus,
+    pub name: String,
+    pub extension: Option<String>,
+    pub status: DiffFileStatus,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Cagada {
-    line_number: i32,
-    line: String,
-    file: DiffFile,
+    pub line_number: usize,
+    pub line: String,
 }
 
 #[derive(Debug)]
-enum DiffFileStatus {
+pub enum DiffFileStatus {
     New,
     Deleted,
     Modified,
     Undefined,
 }
 
-struct GitParser {
+struct Git {
     command: Command,
 }
 
+#[derive(Debug)]
+pub struct IterableText {
+    lines: Vec<String>,
+    line_numbers: Vec<usize>,
+}
+
+impl IterableText {
+    pub fn _from_string(text: String) -> Self {
+        let lines: Vec<String> = text.lines().map(|line| line.to_string()).collect();
+        let line_numbers = (1..=lines.len()).collect::<Vec<usize>>();
+        IterableText { lines, line_numbers }
+    }
+
+    pub fn from_file(filename: &str) -> Self {
+        let f = fs::read_to_string(filename).unwrap();
+        let lines: Vec<String> = f.lines()
+            .map(|line| line.to_string())
+            .collect();
+
+        let line_numbers = (1..=lines.len()).collect::<Vec<usize>>();
+
+        IterableText { lines, line_numbers }
+    }
+}
+
 impl Diff {
-    fn files() -> Option<Vec<DiffFile>> {
-        DiffFile::get()
+    pub fn new (file: DiffFile, command: Command) -> Self {
+        let mut git_parser = Git { command };
+        let source = git_parser.parse_command(&file.name);
+
+        let cagadas = Cagada::get(source);
+        let cagada_count = cagadas.iter().flatten().count();
+
+        if cagada_count == 0 {
+            return Diff::default(file);
+        }
+
+        Diff { file, cagadas, cagada_count }
     }
 
-    pub fn new () -> Self {
-        let files = Diff::files();
-        let mut cagadas: Option<Vec<Cagada>> = Some(vec![]);
-        for file in files.iter().flatten() {
-            cagadas.as_mut().unwrap().extend(Cagada::git(file));
-        };
+    pub fn full (file: DiffFile) -> Self {
+        let filename = &file.name;
+        let source = IterableText::from_file(filename);
 
-        let cagada_count = files.iter().count();
-        Diff {
-            files,
-            cagadas,
-            cagada_count,
+        let cagadas = Cagada::get(source);
+        let cagada_count = cagadas.iter().flatten().count();
+
+        if cagada_count == 0 {
+            return Diff::default(file);
         }
+
+        Diff { file, cagadas, cagada_count }
     }
 
-    pub fn full () -> Self {
-        let files = Diff::files();
-        let mut cagadas: Option<Vec<Cagada>> = Some(vec![]);
-        for file in files.iter().flatten() {
-            cagadas.as_mut().unwrap().extend(Cagada::full(file));
-        }
-        let cagada_count = files.iter().count();
-        Diff {
-            files,
-            cagadas,
-            cagada_count,
-        }
+    pub fn default(file: DiffFile) -> Self {
+        Diff { file, cagadas: None, cagada_count: 0usize }
     }
 }
 
 impl DiffFile {
-    fn get() -> Option<Vec<DiffFile>> {
-        let re: Regex = RegexBuilder::new(r"^.*([MDA])\W*(.*)$")
+    pub fn get(command: &mut Command) -> Option<Vec<DiffFile>> {
+        let re: Regex = RegexBuilder::new(
+            r"^:(?:[[:alnum:]]+\s){4}([MDA])\s+(.*)$"
+        )
             .multi_line(true)
             .build()
             .unwrap();
 
-        let mut command: Command = Cli::git_diff_command();
         command.arg("--raw");
 
         let output: Output = command.output().unwrap();
-        let text: String = String::from_utf8(output.stdout).unwrap_or("".to_owned());
+        let text: String = match String::from_utf8(output.stdout) {
+            Ok(string) => string,
+            _ => return None,
+        };
 
         let mut res: Vec<DiffFile> = vec![];
 
@@ -118,7 +138,7 @@ impl DiffFile {
                 "M" => DiffFileStatus::Modified,
                 _ => DiffFileStatus::Undefined,
             };
-            let extension = extract_extension(&name);
+            let extension = DiffFile::extract_extension(&name);
 
             res.push(DiffFile {
                 name,
@@ -129,98 +149,94 @@ impl DiffFile {
         Some(res)
     }
 
-    fn from_str(file_name: &str) -> Self {
+    pub fn from_str(filename: &str) -> Self {
         DiffFile {
-            name: file_name.to_owned(),
-            extension: extract_extension(&file_name),
+            name: filename.to_owned(),
+            extension: DiffFile::extract_extension(&filename),
             status: DiffFileStatus::Undefined,
         }
     }
-}
 
+    fn extract_extension(file: &str) -> Option<String> {
+        let re: Regex = Regex::new(r"\.(.*)").unwrap();
+        match re.captures(file) {
+            Some(cap) => Some(cap.get(1).unwrap().as_str().to_owned()),
+            None => None
+        }
+    }
+}
 
 impl Cagada {
     fn default_regex() -> RegexSet {
         RegexSet::new(DEFAULT_REGEX).unwrap()
     }
 
-    pub fn format(&self) -> String {
-        format!("{}:{} {}", self.file.name, self.line_number, self.line)
-    }
-
-    fn full(dfile: &DiffFile) -> Vec<Cagada> {
-        let file = File::open(&dfile.name).unwrap();
-        let reader = BufReader::new(file);
+    fn get(source: IterableText) -> Option<Vec<Cagada>> {
+        let mut index: usize = 0usize;
+        let mut res: Vec<Cagada> = vec![];
         let re: RegexSet = Cagada::default_regex();
-        let mut line_number: i32 = 0;
 
-        let mut res = vec![];
-        for line in reader.lines() {
-            line_number += 1;
-            let pline: &str = &line.unwrap_or_default();
-            if re.is_match(pline) {
+        for line in source.lines {
+            if re.is_match(&line) {
                 res.push(Cagada {
-                    line: rem_first_letter(&pline).to_owned(),
-                    line_number,
-                    file: DiffFile::from_str(&dfile.name)
+                    line: line.to_owned(),
+                    line_number: source.line_numbers[index],
                 });
             }
+            index += 1;
         }
-        res
+
+        if res.is_empty() {
+            return None;
+        }
+        Some(res)
     }
 
-    fn git(dfile: &DiffFile) -> Vec<Cagada> {
-        let mut command = Cli::git_diff_command();
-        command.arg(&dfile.name);
-        let mut parser = GitParser { command };
-        parser.parse_command(&dfile.name)
+    fn _set_capture_pattern() -> RegexSet {
+        todo!();
     }
 }
 
-impl GitParser {
-    fn parse_command(&mut self, file_name: &str) -> Vec<Cagada> {
+impl Git {
+    fn parse_command(&mut self, filename: &str) -> IterableText {
+        self.command.arg(filename);
         let output: Output = self.command.output().unwrap();
-        let lines = String::from_utf8(output.stdout).unwrap_or("".to_owned());
-        let split = lines.split("\n");
-        let vec = split.collect::<Vec<&str>>();
-        let mut line_number = 0;
+        let lines = String::from_utf8(output.stdout).unwrap_or_default();
+        let vec = lines.split("\n").collect::<Vec<&str>>();
+
         let line_re: Regex = Regex::new(GIT_LINE_NUMBER_REGEX).unwrap();
         let new_line_re: Regex = Regex::new(GIT_NEW_LINE_REGEX).unwrap();
         let old_line_re: Regex = Regex::new(GIT_REMOVED_LINE_REGEX).unwrap();
-        let re = RegexSet::new(DEFAULT_GIT_REGEX).unwrap();
 
-        let mut res = vec![];
+        let mut line_number: usize = 0;
+        let mut lines: Vec<String> = vec![];
+        let mut line_numbers: Vec<usize> = vec![];
+
         for line in vec {
             if line_re.is_match(line) {
                 line_number = line_re.captures(line).unwrap()
                     .get(1).unwrap()
-                    .as_str().parse::<i32>().unwrap() - 1;
+                    .as_str().parse::<usize>().unwrap() - 1;
                 }
-            if re.is_match(line) {
-                res.push(Cagada {
-                    line: rem_first_letter(line).to_owned(),
-                    line_number,
-                    file: DiffFile::from_str(file_name)
-                });
+
+            if new_line_re.is_match(line) {
+                lines.push(Git::rem_first_letter(line).to_owned());
+                line_numbers.push(line_number);
             }
+
             if !old_line_re.is_match(line) {
                 line_number += 1;
             }
         }
-        res
-    }
-}
+    let res = IterableText { lines, line_numbers };
 
-fn extract_extension(file: &str) -> String {
-    let re: Regex = Regex::new(r"\.(.*)").unwrap();
-    match re.captures(file) {
-        Some(cap) => cap.get(1).unwrap().as_str().to_owned(),
-        None => "".to_owned()
-    }
-}
+    res
 
-fn rem_first_letter(value: &str) -> &str {
-    let mut chars = value.chars();
-    chars.next();
-    chars.as_str()
+    }
+
+    fn rem_first_letter(value: &str) -> &str {
+        let mut chars = value.chars();
+        chars.next();
+        chars.as_str()
+    }
 }
