@@ -44,10 +44,7 @@ fn main() {
 }
 
 fn file_exists(path: &str) -> bool {
-    match fs::metadata(path) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+    fs::metadata(path).is_ok()
 }
 
 fn pretty_print(diffs: &Vec<Diff>) {

@@ -7,7 +7,7 @@ use std::{
     vec
 };
 
-const DEFAULT_REGEX: &'static [&str] = &[
+const DEFAULT_REGEX: &[&str; 6] = &[
     r"^\s*//",
     r"^\s*/\*",
     r"^\s*\*/",
@@ -152,17 +152,14 @@ impl DiffFile {
     pub fn from_str(filename: &str) -> Self {
         DiffFile {
             name: filename.to_owned(),
-            extension: DiffFile::extract_extension(&filename),
+            extension: DiffFile::extract_extension(filename),
             status: DiffFileStatus::Undefined,
         }
     }
 
     fn extract_extension(file: &str) -> Option<String> {
         let re: Regex = Regex::new(r"\.(.*)").unwrap();
-        match re.captures(file) {
-            Some(cap) => Some(cap.get(1).unwrap().as_str().to_owned()),
-            None => None
-        }
+        re.captures(file).map(|cap| cap.get(1).unwrap().as_str().to_owned())
     }
 }
 
@@ -172,18 +169,16 @@ impl Cagada {
     }
 
     fn get(source: IterableText) -> Option<Vec<Cagada>> {
-        let mut index: usize = 0usize;
         let mut res: Vec<Cagada> = vec![];
         let re: RegexSet = Cagada::default_regex();
 
-        for line in source.lines {
+        for (index, line) in source.lines.into_iter().enumerate() {
             if re.is_match(&line) {
                 res.push(Cagada {
                     line: line.to_owned(),
                     line_number: source.line_numbers[index],
                 });
             }
-            index += 1;
         }
 
         if res.is_empty() {
@@ -202,7 +197,7 @@ impl Git {
         self.command.arg(filename);
         let output: Output = self.command.output().unwrap();
         let lines = String::from_utf8(output.stdout).unwrap_or_default();
-        let vec = lines.split("\n").collect::<Vec<&str>>();
+        let vec = lines.split('\n').collect::<Vec<&str>>();
 
         let line_re: Regex = Regex::new(GIT_LINE_NUMBER_REGEX).unwrap();
         let new_line_re: Regex = Regex::new(GIT_NEW_LINE_REGEX).unwrap();
@@ -228,10 +223,7 @@ impl Git {
                 line_number += 1;
             }
         }
-    let res = IterableText { lines, line_numbers };
-
-    res
-
+        IterableText { lines, line_numbers }
     }
 
     fn rem_first_letter(value: &str) -> &str {

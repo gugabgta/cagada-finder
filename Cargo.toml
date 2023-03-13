@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 regex = "1.7.1"
 clap = { version = "4.0", features = ["derive"] }
+serde = "1.0.155"
+toml = "0.7.3"

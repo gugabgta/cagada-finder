@@ -31,7 +31,6 @@ impl Cli {
     pub fn git_show_command () -> Command {
         let mut command: Command = Command::new("git");
         command.arg("show");
-
         command
     }
 }
