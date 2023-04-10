@@ -8,12 +8,12 @@ use std::{
 };
 
 const DEFAULT_REGEX: &[&str; 6] = &[
-    r"^\s*//",
-    r"^\s*/\*",
-    r"^\s*\*/",
-    r"^\s*error_log",
-    r"^\s*console.log",
-    r"^\s*cagada",
+    r"//",
+    r"/\*",
+    r"\*/",
+    r"error_log",
+    r"console.log",
+    r"cagada",
 ];
 
 const GIT_LINE_NUMBER_REGEX: &str = r"@@ -\d+,\d+ \+(\d+)";
@@ -27,24 +27,25 @@ pub struct Diff {
     pub cagada_count: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct DiffFile {
     pub name: String,
     pub extension: Option<String>,
     pub status: DiffFileStatus,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Cagada {
     pub line_number: usize,
     pub line: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Default)]
 pub enum DiffFileStatus {
     New,
     Deleted,
     Modified,
+    #[default]
     Undefined,
 }
 
@@ -59,7 +60,8 @@ pub struct IterableText {
 }
 
 impl IterableText {
-    pub fn _from_string(text: String) -> Self {
+    #[allow(dead_code)]
+    pub fn from_string(text: String) -> Self {
         let lines: Vec<String> = text.lines().map(|line| line.to_string()).collect();
         let line_numbers = (1..=lines.len()).collect::<Vec<usize>>();
         IterableText { lines, line_numbers }
@@ -230,5 +232,97 @@ impl Git {
         let mut chars = value.chars();
         chars.next();
         chars.as_str()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_iterable_text_from_string() {
+        let text = "test\ntest2\ntest3".to_owned();
+        let iterable = IterableText::from_string(text);
+        assert_eq!(iterable.lines.len(), 3);
+        assert_eq!(iterable.line_numbers.len(), 3);
+    }
+
+    #[test]
+    fn test_iterable_text_from_file() {
+        let file_path = "tests/diff-sample";
+        let iterable = IterableText::from_file(file_path);
+        assert_eq!(iterable.lines.len(), 224);
+        assert_eq!("-use clap::{Parser, arg, /* Command */};", iterable.lines[136]);
+    }
+
+    #[test]
+    fn test_diff_file_from_str_with_extension() {
+        let filename = "test.txt";
+        let file = DiffFile::from_str(filename);
+        assert_eq!(file.name, filename);
+        assert_eq!(file.extension, Some("txt".to_owned()));
+        assert_eq!(file.status, DiffFileStatus::Undefined);
+    }
+
+    #[test]
+    fn test_diff_full() {
+        let file = DiffFile::from_str("tests/full-sample");
+        let diff = Diff::full(file);
+        for (index, cagada) in diff.cagadas.as_ref().unwrap().into_iter().enumerate() {
+            if index == 3 {
+                println!("{}", cagada.line);
+                assert_eq!(diff.cagada_count, 8);
+                assert_eq!(cagada.line, "    #[arg(long)error_log]".to_owned());
+            }
+        }
+    }
+
+    #[test]
+    fn test_diff_default() {
+        let file = DiffFile::from_str("test.txt");
+        let diff = Diff::default(file);
+        assert_eq!(diff.cagada_count, 0);
+    }
+
+    #[test]
+    fn test_by_hash1() {
+        let mut com = crate::Cli::git_show_command();
+        com.arg("53cafd8665e86564a4fa1297c8c12e4c028ddcd1");
+        let mut files = DiffFile::get(&mut com).unwrap();
+        let file = files.remove(1);
+        let diff = Diff::new(file, com);
+
+        assert_eq!(diff.cagada_count, 16);
+        assert_eq!(
+            diff.cagadas.as_ref().unwrap().get(2).unwrap().line,
+            "    pub fn get () /* -> Self */ {".to_owned());
+        assert_eq!(diff.cagadas.as_ref().unwrap().get(2).unwrap().line_number, 14);
+    }
+
+    #[test]
+    fn test_by_hash2() {
+        let mut com = crate::Cli::git_show_command();
+        com.arg("53cafd8665e86564a4fa1297c8c12e4c028ddcd1");
+        let file = DiffFile::from_str("src/git.rs");
+        let diff = Diff::new(file, com);
+
+        assert_eq!(diff.cagada_count, 16);
+        assert_eq!(
+            diff.cagadas.as_ref().unwrap().get(2).unwrap().line,
+            "    pub fn get () /* -> Self */ {".to_owned());
+        assert_eq!(diff.cagadas.as_ref().unwrap().get(2).unwrap().line_number, 14);
+    }
+
+    #[test]
+    fn test_diff_file_vs_from_str() {
+        let mut com = crate::Cli::git_show_command();
+        com.arg("53cafd8665e86564a4fa1297c8c12e4c028ddcd1");
+
+        let mut files = DiffFile::get(&mut com).unwrap();
+        let file1 = files.remove(1);
+
+        let file2 = DiffFile::from_str("src/git.rs");
+
+        assert_eq!(file1, file2);
     }
 }

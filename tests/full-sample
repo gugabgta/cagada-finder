@@ -1,0 +1,22 @@
+#[derive(Parser)]
+pub struct Cli {
+    /*
+        this code is not meant to run :P
+    *****/
+    /********* */
+    #[arg(short = 'p', long = "pattern")]
+    pub pattern: Option<String>,
+
+    #[arg(long)error_log]
+    pub staged: bool,
+
+    // cagada
+    #[arg(short = 'f', long = "full")]
+    pub full: bool,
+//
+    #[clap(help = "Input file", index = 1)] //
+    pub input: Option<String>, console.log /* */
+}
+
+impl Cli {}
+
